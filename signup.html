@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -74,6 +73,8 @@
     padding: 11px 16px;
     cursor: pointer;
   }
+  .switch { margin: 18px 0 0; padding-top: 16px; border-top: 1px solid var(--line); text-align: center; font-size: 14px; color: var(--muted); }
+  button.link { width: auto; margin: 0 0 0 6px; padding: 2px 4px; background: transparent; color: var(--accent); font-size: 14px; border-radius: 4px; }
   #msg { min-height: 20px; margin: 14px 0 0; font-size: 14px; }
   #msg.ok { color: var(--ok); }
   #msg.error { color: var(--error); }
@@ -84,7 +85,7 @@
 </head>
 <body>
 <div class="card">
-  <h1>회원가입</h1>
+  <h1 id="title">회원가입</h1>
 
   <!-- GitHub Pages에서 열었을 때만 보이는 서버 주소 입력칸 -->
   <div id="server-box">
@@ -100,9 +101,14 @@
     <label for="pw">비밀번호</label>
     <input id="pw" type="password" autocomplete="new-password" required>
 
-    <button type="submit">가입하기</button>
+    <button type="submit" id="submit-btn">가입하기</button>
   </form>
   <p id="msg" role="status"></p>
+
+  <p class="switch">
+    <span id="switch-text">이미 계정이 있나요?</span>
+    <button type="button" id="switch-btn" class="link">로그인</button>
+  </p>
 </div>
 
 <script>
@@ -135,23 +141,48 @@
     msg.className = type;
   }
 
+  // 회원가입 <-> 로그인 전환
+  let mode = "signup";
+  const title = document.getElementById("title");
+  const submitBtn = document.getElementById("submit-btn");
+  const switchText = document.getElementById("switch-text");
+  const switchBtn = document.getElementById("switch-btn");
+  const pwInput = document.getElementById("pw");
+
+  function setMode(next) {
+    mode = next;
+    const isSignup = mode === "signup";
+    title.textContent = isSignup ? "회원가입" : "로그인";
+    submitBtn.textContent = isSignup ? "가입하기" : "로그인";
+    switchText.textContent = isSignup ? "이미 계정이 있나요?" : "아직 계정이 없나요?";
+    switchBtn.textContent = isSignup ? "로그인" : "회원가입";
+    pwInput.autocomplete = isSignup ? "new-password" : "current-password";
+    show("", "");
+  }
+  switchBtn.onclick = () => setMode(mode === "signup" ? "login" : "signup");
+
   document.getElementById("form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const id = document.getElementById("uid").value.trim();
-    const pw = document.getElementById("pw").value;
+    const pw = pwInput.value;
     if (onGithub && !API) { show("먼저 서버 주소를 저장하세요", "error"); return; }
     try {
-      const res = await fetch(API + "/signup", {
+      const res = await fetch(API + "/" + mode, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, pw })
       });
       const data = await res.json();
-      if (data.ok) {
-        show("가입이 완료됐어요", "ok");
+      if (data.ok && mode === "signup") {
+        show("가입이 완료됐어요. 이제 로그인해 보세요", "ok");
+        e.target.reset();
+        setMode("login");
+        show("가입이 완료됐어요. 이제 로그인해 보세요", "ok");
+      } else if (data.ok) {
+        show(id + "님, 로그인됐어요", "ok");
         e.target.reset();
       } else {
-        show(data.error || "가입에 실패했어요", "error");
+        show(data.error || "요청에 실패했어요", "error");
       }
     } catch (err) {
       show("서버에 연결할 수 없어요. 파이썬 서버가 켜져 있는지 확인하세요", "error");
