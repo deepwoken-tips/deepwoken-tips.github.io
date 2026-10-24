@@ -1,46 +1,138 @@
-
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>회원가입</title>
-
-    <style>
-        body {
-            margin: 0;
-            height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background-color: #f0f2f5;
-            font-family: Arial, sans-serif;
-        }
-
-        .signup-button {
-            padding: 18px 50px;
-            font-size: 24px;
-            font-weight: bold;
-            color: white;
-            background-color: #4CAF50;
-            border: none;
-            border-radius: 12px;
-            cursor: pointer;
-            transition: 0.3s;
-        }
-
-        .signup-button:hover {
-            background-color: #388E3C;
-            transform: scale(1.05);
-        }
-    </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>홈</title>
+<style>
+  :root {
+    --bg: #f3f5f7;
+    --panel: #ffffff;
+    --text: #1d2433;
+    --muted: #6b7587;
+    --line: #dde2ea;
+    --accent: #2457d6;
+    --accent-text: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141820;
+      --panel: #1c212b;
+      --text: #e6e9ef;
+      --muted: #8f99ab;
+      --line: #2c3340;
+      --accent: #6b93ff;
+      --accent-text: #0e1320;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+  .card {
+    width: 100%;
+    max-width: 360px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 28px 24px;
+  }
+  h1 { font-size: 20px; margin: 0 0 8px; }
+  p { margin: 0 0 18px; color: var(--muted); font-size: 14px; line-height: 1.5; }
+  button, a.btn {
+    display: inline-block;
+    font: inherit;
+    font-weight: 600;
+    text-decoration: none;
+    color: var(--accent-text);
+    background: var(--accent);
+    border: 0;
+    border-radius: 8px;
+    padding: 10px 16px;
+    cursor: pointer;
+  }
+  button:focus-visible, a.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+</style>
 </head>
 <body>
+<div class="card">
+  <h1 id="title">확인 중...</h1>
+  <p id="desc"></p>
+  <button id="action" type="button" hidden></button>
+</div>
 
-    <button class="signup-button"
-        onclick="location.href='https://deepwoken-tips.github.io/signup.html'">
-        회원가입
-    </button>
+<script>
+  // 로그인 페이지에서 넘어온 값을 읽어서 이 사이트에 저장 (#token=...&server=...)
+  function read(key) {
+    try { return localStorage.getItem(key) || ""; } catch (e) { return ""; }
+  }
+  function write(key, value) {
+    try { localStorage.setItem(key, value); } catch (e) {}
+  }
+  function remove(key) {
+    try { localStorage.removeItem(key); } catch (e) {}
+  }
 
+  const params = new URLSearchParams(location.hash.slice(1));
+  if (params.get("token")) {
+    write("auth_token", params.get("token"));
+    write("auth_server", params.get("server") || "");
+    history.replaceState(null, "", location.pathname + location.search);  // 주소창에서 토큰 숨김
+  }
+
+  const token = read("auth_token");
+  const API = read("auth_server");
+  const title = document.getElementById("title");
+  const desc = document.getElementById("desc");
+  const action = document.getElementById("action");
+
+  function showLoggedOut(text) {
+    title.textContent = "로그인이 필요해요";
+    desc.textContent = text;
+    action.hidden = false;
+    action.textContent = "로그인하러 가기";
+    action.onclick = () => { location.href = "signup.html"; };
+  }
+
+  async function init() {
+    if (!token) { showLoggedOut("로그인한 기록이 없어요."); return; }
+    try {
+      const res = await fetch(API + "/me", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error();
+      title.textContent = data.id + "님, 환영합니다";
+      desc.textContent = "이 페이지를 새로고침하거나 다시 열어도 로그인이 유지돼요.";
+      action.hidden = false;
+      action.textContent = "로그아웃";
+      action.onclick = async () => {
+        try {
+          await fetch(API + "/logout", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token })
+          });
+        } catch (e) {}
+        remove("auth_token");
+        remove("auth_server");
+        showLoggedOut("로그아웃했어요.");
+      };
+    } catch (e) {
+      showLoggedOut("로그인 정보가 만료됐거나 서버에 연결할 수 없어요.");
+    }
+  }
+  init();
+</script>
 </body>
 </html>
