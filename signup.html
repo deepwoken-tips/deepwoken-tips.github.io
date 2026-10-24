@@ -112,6 +112,10 @@
 </div>
 
 <script>
+  // 로그인에 성공하면 이동할 사이트 주소 (여기를 원하는 주소로 바꾸세요)
+  // 예: "https://사용자이름.github.io/chat.html"
+  const TARGET_URL = "home.html";
+
   // 내 PC의 Flask가 연 페이지면 같은 주소를 사용, GitHub Pages면 입력칸의 터널 주소를 사용
   const onGithub = location.hostname.endsWith("github.io");
   const serverBox = document.getElementById("server-box");
@@ -179,8 +183,11 @@
         setMode("login");
         show("가입이 완료됐어요. 이제 로그인해 보세요", "ok");
       } else if (data.ok) {
-        show(id + "님, 로그인됐어요", "ok");
-        e.target.reset();
+        show(id + "님, 로그인됐어요. 이동 중...", "ok");
+        // 토큰과 서버 주소를 주소 뒤(#)에 실어 보내서, 이동한 사이트가 로그인 상태를 이어받음
+        let hash = "#token=" + encodeURIComponent(data.token);
+        if (API) hash += "&server=" + encodeURIComponent(API);
+        location.href = TARGET_URL + hash;
       } else {
         show(data.error || "요청에 실패했어요", "error");
       }
