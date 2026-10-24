@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>채팅</title>
+<style>
+  :root {
+    --bg: #f3f5f7;
+    --panel: #ffffff;
+    --text: #1d2433;
+    --muted: #6b7587;
+    --line: #dde2ea;
+    --accent: #2457d6;
+    --accent-text: #ffffff;
+    --mine: #e4ecff;
+    --error: #c0392b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141820;
+      --panel: #1c212b;
+      --text: #e6e9ef;
+      --muted: #8f99ab;
+      --line: #2c3340;
+      --accent: #6b93ff;
+      --accent-text: #0e1320;
+      --mine: #26334f;
+      --error: #ff7b6b;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+    display: flex;
+    justify-content: center;
+  }
+  .app {
+    width: 100%;
+    max-width: 640px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: var(--panel);
+    border-left: 1px solid var(--line);
+    border-right: 1px solid var(--line);
+  }
+  header {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  header h1 { font-size: 17px; margin: 0; }
+  .status { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .status.on .dot { background: #2fa36b; }
+  .status.off .dot { background: var(--error); }
+
+  #server-bar {
+    display: none;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--line);
+    gap: 8px;
+  }
+  #server-bar.show { display: flex; }
+
+  #list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .empty { color: var(--muted); text-align: center; margin: auto; font-size: 14px; }
+  .msg { max-width: 82%; align-self: flex-start; }
+  .msg .who { font-size: 12px; color: var(--muted); margin: 0 4px 3px; }
+  .msg .body {
+    background: var(--bg);
+    padding: 8px 12px;
+    border-radius: 12px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .msg.mine { align-self: flex-end; }
+  .msg.mine .who { text-align: right; }
+  .msg.mine .body { background: var(--mine); }
+
+  form {
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid var(--line);
+    display: flex;
+    gap: 8px;
+  }
+  input {
+    font: inherit;
+    color: var(--text);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    min-width: 0;
+  }
+  input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  #name { width: 110px; flex: none; }
+  #text, #server { flex: 1; }
+  button {
+    font: inherit;
+    font-weight: 600;
+    color: var(--accent-text);
+    background: var(--accent);
+    border: 0;
+    border-radius: 8px;
+    padding: 10px 16px;
+    cursor: pointer;
+    flex: none;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>채팅</h1>
+    <div class="status" id="status"><span class="dot"></span><span id="status-text">연결 중</span></div>
+  </header>
+
+  <div id="server-bar">
+    <input id="server" placeholder="서버 주소 (예: https://xxxx.trycloudflare.com)" autocomplete="off">
+    <button type="button" id="server-save">서버 연결</button>
+  </div>
+
+  <div id="list"><div class="empty">아직 메시지가 없어요. 첫 메시지를 보내보세요.</div></div>
+
+  <form id="form">
+    <input id="name" placeholder="닉네임" maxlength="20" autocomplete="off">
+    <input id="text" placeholder="메시지를 입력하세요" maxlength="500" autocomplete="off">
+    <button type="submit">보내기</button>
+  </form>
+</div>
+
+<script>
+  // 서버 주소 결정
+  // - 내 PC의 Flask가 직접 열어준 페이지(localhost, 192.168.x.x 등)면 같은 주소를 사용
+  // - GitHub Pages(github.io)에서 열면 위쪽 입력칸에 터널 주소를 직접 넣어서 사용
+  const onGithub = location.hostname.endsWith("github.io");
+  const bar = document.getElementById("server-bar");
+  const serverInput = document.getElementById("server");
+  const nameInput = document.getElementById("name");
+  const textInput = document.getElementById("text");
+  const list = document.getElementById("list");
+  const statusBox = document.getElementById("status");
+  const statusText = document.getElementById("status-text");
+
+  function store(key, value) {
+    try { value === undefined ? localStorage.getItem(key) : localStorage.setItem(key, value); } catch (e) {}
+  }
+  function read(key) {
+    try { return localStorage.getItem(key) || ""; } catch (e) { return ""; }
+  }
+
+  let API = onGithub ? read("chat_server") : "";
+  if (onGithub) {
+    bar.classList.add("show");
+    serverInput.value = API;
+  }
+  document.getElementById("server-save").onclick = () => {
+    API = serverInput.value.trim().replace(/\/+$/, "");
+    store("chat_server", API);
+    refresh();
+  };
+
+  nameInput.value = read("chat_name");
+  nameInput.addEventListener("input", () => store("chat_name", nameInput.value));
+
+  function setStatus(ok) {
+    statusBox.className = "status " + (ok ? "on" : "off");
+    statusText.textContent = ok ? "서버 연결됨" : "서버에 연결할 수 없음";
+  }
+
+  let lastCount = -1;
+  async function refresh() {
+    if (onGithub && !API) { setStatus(false); return; }
+    try {
+      const res = await fetch(API + "/messages");
+      const data = await res.json();
+      setStatus(true);
+      render(data.messages);
+    } catch (e) {
+      setStatus(false);
+    }
+  }
+
+  function render(messages) {
+    if (messages.length === lastCount) return;
+    const stick = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
+    lastCount = messages.length;
+    list.textContent = "";
+    if (messages.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = "아직 메시지가 없어요. 첫 메시지를 보내보세요.";
+      list.appendChild(empty);
+      return;
+    }
+    const me = nameInput.value.trim();
+    for (const [name, text] of messages) {
+      const wrap = document.createElement("div");
+      wrap.className = "msg" + (name === me ? " mine" : "");
+      const who = document.createElement("div");
+      who.className = "who";
+      who.textContent = name;
+      const body = document.createElement("div");
+      body.className = "body";
+      body.textContent = text;
+      wrap.append(who, body);
+      list.appendChild(wrap);
+    }
+    if (stick) list.scrollTop = list.scrollHeight;
+  }
+
+  document.getElementById("form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = nameInput.value.trim();
+    const text = textInput.value.trim();
+    if (!name) { nameInput.focus(); return; }
+    if (!text) return;
+    try {
+      const res = await fetch(API + "/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, text })
+      });
+      if (!res.ok) throw new Error();
+      textInput.value = "";
+      lastCount = -1;
+      await refresh();
+      list.scrollTop = list.scrollHeight;
+    } catch (err) {
+      setStatus(false);
+    }
+  });
+
+  refresh();
+  setInterval(refresh, 2000);  // 2초마다 새 메시지 확인
+</script>
+</body>
+</html>
