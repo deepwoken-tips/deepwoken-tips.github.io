@@ -1,1 +1,248 @@
-http://192.168.0.100:8002
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>스쿨쉐어</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#f4f6fb;--card:#fff;--tx:#1c2333;--sub:#6b7488;--pri:#3b5bdb;--pri2:#e7ecff;--bd:#dfe3ee;--red:#d6336c;color-scheme:light}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12151f;--card:#1b2030;--tx:#e8ebf5;--sub:#98a1b8;--pri:#7c93ff;--pri2:#252d4a;--bd:#2b3249;--red:#ff6b9a;color-scheme:dark}}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:-apple-system,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",sans-serif;font-size:15px;line-height:1.5}
+#app,#off{max-width:720px;margin:0 auto;padding:12px}
+#off{margin-bottom:0}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:10px}
+h1{font-size:20px;margin:4px 0 8px}h2{font-size:16px;margin:0 0 8px}
+input,select,textarea,button{font:inherit;color:var(--tx)}
+input,select,textarea{width:100%;padding:9px 10px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);margin-bottom:8px}
+button{background:var(--pri);color:#fff;border:0;border-radius:8px;padding:8px 14px;cursor:pointer}
+button.g{background:var(--pri2);color:var(--pri)}button.d{background:transparent;color:var(--red);padding:2px 6px;font-size:13px}
+.row{display:flex;gap:8px;align-items:center}.row>*{margin-bottom:0}
+.top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.tabs{display:flex;gap:6px;overflow-x:auto;margin:8px 0}
+.tabs button{background:var(--card);color:var(--sub);border:1px solid var(--bd);white-space:nowrap}
+.tabs button.on{background:var(--pri);color:#fff;border-color:var(--pri)}
+.meta{color:var(--sub);font-size:12px}
+.badge{background:var(--pri2);color:var(--pri);border-radius:6px;padding:1px 6px;font-size:11px;margin-left:4px}
+.post img{max-width:100%;border-radius:8px;margin-top:6px}
+.file{display:inline-block;background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:4px 8px;margin-top:6px;font-size:13px}
+.chat{max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+.msg{max-width:80%;padding:6px 10px;border-radius:12px;background:var(--bg);align-self:flex-start;word-break:break-word;white-space:pre-wrap}
+.msg.me{background:var(--pri);color:#fff;align-self:flex-end}
+.msg .meta{color:inherit;opacity:.7}
+.emo{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px}.emo button{background:var(--bg);color:var(--tx);padding:2px 6px;border:1px solid var(--bd)}
+.note{background:var(--pri2);color:var(--pri);border-radius:8px;padding:8px 10px;font-size:13px;margin-bottom:10px}
+.chip{display:inline-block;border:1px solid var(--bd);border-radius:14px;padding:2px 10px;margin:2px;font-size:13px;cursor:pointer}
+.chip.on{background:var(--pri);color:#fff;border-color:var(--pri)}
+#off{display:none}#off.show{display:block}
+</style>
+</head>
+<body>
+<div id="off"><div class="note" style="margin:0;color:var(--red)">서버에 연결할 수 없어요. 파이썬 서버(server.py)가 켜져 있는지 확인하세요.</div></div>
+<div id="app"></div>
+<script>
+const EMO=['😀','👍','❤️','😂','🎉','🙏','📚','🔥'];
+const S={me:null,tab:'board',dm:null,grp:null,sel:[],codeOk:false,v:-1,
+users:[],posts:[],cm:[],dms:{},groups:[],topics:[],demo:[]};
+const $=s=>document.querySelector(s);
+const esc=t=>String(t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const U=id=>S.users.find(u=>u.id===id)||{id,name:'알 수 없음',role:'student',school:'',council:false};
+const now=()=>new Date().toTimeString().slice(0,5);
+const isT=()=>S.me.role==='teacher';
+const label=u=>esc(u.name)+(u.role==='teacher'?'<span class="badge">교사</span>':u.council?'<span class="badge">회장단</span>':'');
+const schoolUsers=()=>S.users.filter(u=>u.school===S.me.school);
+const dmKey=(a,b)=>[a,b].sort((x,y)=>x-y).join('-');
+
+/* ---------- 서버 통신 ---------- */
+// 내 PC의 Flask가 연 페이지면 같은 주소, GitHub Pages(github.io)면 입력한 터널 주소를 사용
+const rd=k=>{try{return localStorage.getItem(k)||''}catch(e){return ''}};
+const wr=(k,v)=>{try{v?localStorage.setItem(k,v):localStorage.removeItem(k)}catch(e){}};
+const onGithub=location.hostname.endsWith('github.io');
+let API=onGithub?rd('ss_server'):'';
+let TOKEN=rd('ss_token');
+function setToken(t){TOKEN=t;wr('ss_token',t)}
+function showOff(b){$('#off').classList.toggle('show',b)}
+
+async function call(path,body={}){
+ if(onGithub&&!API)return{ok:false,error:'먼저 서버 주소를 저장하세요'};
+ try{
+  const r=await fetch(API+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,token:TOKEN})});
+  const d=await r.json().catch(()=>({ok:false,error:'서버 응답 오류'}));
+  showOff(false);
+  if(r.status===401){setToken('');S.me=null;S.v=-1;render()}
+  return d;
+ }catch(e){showOff(true);return{ok:false,error:'서버에 연결할 수 없어요'}}
+}
+async function act(path,body,clear=[]){
+ const d=await call(path,body);
+ if(!d.ok){if(d.error)alert(d.error);return false}
+ clear.forEach(i=>{const e=document.getElementById(i);if(e)e.value=''});
+ await sync(true);return true;
+}
+async function sync(force){
+ if(!TOKEN)return;
+ const d=await call('/api/state',{v:force?-1:S.v});
+ if(!d.ok||d.same)return;
+ const first=!S.me;
+ Object.assign(S,{me:d.me,users:d.users,posts:d.posts,cm:d.cm,dms:d.dms,groups:d.groups,topics:d.topics,v:d.v});
+ first?render():renderKeep();
+}
+// 새 데이터가 와서 화면을 다시 그릴 때, 입력 중이던 내용과 커서를 유지
+function renderKeep(){
+ const ids=['pt','ci','gn','tt','tp'],saved={};
+ ids.forEach(i=>{const e=document.getElementById(i);if(e)saved[i]=e.value});
+ const ae=document.activeElement,aid=ae&&ae.id,pos=ae&&ae.selectionStart;
+ render();
+ ids.forEach(i=>{const e=document.getElementById(i);if(e&&saved[i]!==undefined)e.value=saved[i]});
+ const n=aid&&document.getElementById(aid);
+ if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(e){}}
+}
+async function loadDemo(){const d=await call('/api/accounts');if(d.ok)S.demo=d.users}
+function resetView(){S.tab='board';S.dm=null;S.grp=null;S.sel=[]}
+async function afterLogin(d){
+ if(!d.ok){err(d.error||'실패했어요');return}
+ setToken(d.token);resetView();S.v=-1;S.me=null;await sync(true);
+}
+async function demoLogin(id){afterLogin(await call('/api/demo_login',{id}))}
+async function doLogin(){
+ const sc=$('#lsc').value.trim(),nm=$('#lnm').value.trim();
+ if(!sc||!nm){err('학교와 이름을 입력하세요');return}
+ afterLogin(await call('/api/login',{school:sc,name:nm}));
+}
+function logout(){setToken('');S.me=null;S.v=-1;render()}
+function err(t){const e=$('#err');if(e)e.textContent=t}
+async function saveSrv(){
+ API=$('#srv').value.trim().replace(/\/+$/,'');wr('ss_server',API);
+ await loadDemo();render();
+}
+
+/* ---------- 화면 ---------- */
+function render(){
+ if(!S.me){return authView()}
+ const m=S.me,tabs=[['board','게시판'],['class','반톡'],['dm','1:1 채팅'],['group','조별과제'],['topic','학생자치 논제']];
+ $('#app').innerHTML=`<div class="top"><h1>📘 스쿨쉐어</h1><div class="row" style="width:auto">${m.demo?`<select id="sw" style="margin:0;width:auto">${S.demo.map(u=>`<option value="${u.id}" ${u.id===m.id?'selected':''}>${esc(u.name)} (${u.role==='teacher'?'교사':u.council?'회장':'학생'})</option>`).join('')}</select>`:''}<button class="g" onclick="logout()">로그아웃</button></div></div>
+ <div class="meta">${esc(m.school)} · ${m.role==='teacher'?esc(m.dept)+(m.cls?' · 담임 '+esc(m.grade)+'-'+esc(m.cls):''):esc(m.grade)+'학년 '+esc(m.cls)+'반'} · ${label(m)}${m.demo?' (상단 선택으로 계정 전환 시연)':''}</div>
+ <div class="tabs">${tabs.map(([k,n])=>`<button class="${S.tab===k?'on':''}" onclick="S.tab='${k}';render()">${n}</button>`).join('')}</div><div id="main"></div>`;
+ if($('#sw'))$('#sw').onchange=e=>{resetView();demoLogin(+e.target.value)};
+ ({board:boardView,class:classView,dm:dmView,group:groupView,topic:topicView})[S.tab]();
+}
+
+function authView(){
+ $('#app').innerHTML=`<h1>📘 스쿨쉐어</h1><div class="note">같은 학교 학생·교사만 사용 · 학부모 열람 불가 · 학생끼리 1:1 채팅 금지</div>
+ ${onGithub?`<div class="card"><h2>서버 주소</h2><div class="row"><input id="srv" value="${esc(API)}" placeholder="https://xxxx.trycloudflare.com"><button class="g" style="white-space:nowrap" onclick="saveSrv()">저장</button></div></div>`:''}
+ <div class="card"><h2>데모 계정으로 둘러보기</h2><div>${S.demo.map(u=>`<span class="chip" onclick="demoLogin(${u.id})">${esc(u.name)} (${u.role==='teacher'?'교사':u.council?'회장':'학생'})</span>`).join('')||'<span class="meta">서버에 연결되면 표시돼요</span>'}</div></div>
+ <div class="card"><h2>로그인</h2><div class="row"><input id="lsc" placeholder="학교"><input id="lnm" placeholder="이름" onkeydown="if(event.key==='Enter')doLogin()"><button style="white-space:nowrap" onclick="doLogin()">로그인</button></div></div>
+ <div class="card"><h2>회원가입</h2>
+ <select id="r" onchange="rf()"><option value="student">학생</option><option value="teacher">교사</option></select>
+ <input id="sc" placeholder="학교 (예: 한빛고등학교)"><input id="nm" placeholder="이름">
+ <div id="rf"></div>
+ <div class="row"><input id="ph" placeholder="전화번호 (010-0000-0000)"><button class="g" style="white-space:nowrap" onclick="sendCode()">인증번호</button></div>
+ <input id="cd" placeholder="인증번호 6자리 (데모: 123456)" style="margin-top:8px">
+ <button onclick="signup()" style="width:100%">가입하기</button></div>
+ <div id="err" class="meta" style="color:var(--red);margin-top:6px"></div>`;
+ rf();
+}
+function rf(){
+ const t=$('#r').value==='teacher';
+ $('#rf').innerHTML=t?`<input id="dp" placeholder="담당부서"><div class="row"><input id="g" placeholder="담임 학년(선택)"><input id="c" placeholder="담임 반(선택)"></div>`
+ :`<div class="row"><input id="g" placeholder="학년"><input id="c" placeholder="반"></div>`;
+ $('#rf').style.marginBottom='8px';
+}
+function sendCode(){const ph=$('#ph').value.trim();if(ph.length<10){err('전화번호를 입력하세요');return}S.codeOk=true;err('인증번호를 발송했습니다 (데모: 123456)')}
+async function signup(){
+ const v=id=>$('#'+id)?$('#'+id).value.trim():'';
+ const role=v('r');
+ if(!v('sc')||!v('nm')||(role==='student'&&(!v('g')||!v('c')))){err('필수 항목을 입력하세요');return}
+ if(!S.codeOk||v('cd')!=='123456'){err('전화번호 인증을 완료하세요');return}
+ const d=await call('/api/signup',{role,school:v('sc'),name:v('nm'),grade:v('g'),cls:v('c'),dept:v('dp'),code:v('cd')});
+ S.codeOk=false;afterLogin(d);
+}
+
+/* 2. 게시판 */
+function boardView(){
+ const m=S.me,list=S.posts;
+ $('#main').innerHTML=`<div class="card"><h2>글쓰기</h2><div class="emo">${EMO.map(e=>`<button onclick="ins('${e}')">${e}</button>`).join('')}</div>
+ <textarea id="pt" rows="3" placeholder="자료나 학교 정보를 공유해 보세요 (한국어/English/日本語 등)"></textarea>
+ <input type="file" id="pf"><button onclick="addPost()">올리기</button></div>
+ ${list.slice().reverse().map(p=>{const a=U(p.uid),can=p.uid===m.id||isT()||m.council;
+ return `<div class="card post"><div class="top"><div><b>${label(a)}</b> <span class="meta">${esc(a.school)} · ${esc(p.t)}</span></div>${can?`<button class="d" onclick="delPost(${p.id})">삭제</button>`:''}</div>
+ <div style="white-space:pre-wrap">${esc(p.text)}</div>${p.img?`<img src="${esc(p.img)}">`:''}
+ ${p.file?`<div><span class="file">📎 ${esc(p.file.name)}</span> <a class="meta" download="${esc(p.file.name)}" href="${esc(p.file.data)}">다운로드</a></div>`:''}</div>`}).join('')||'<div class="meta">아직 글이 없습니다.</div>'}`;
+}
+function ins(e){const t=$('#pt');t.value+=e;t.focus()}
+async function addPost(){
+ const text=$('#pt').value.trim(),f=$('#pf').files[0];
+ if(!text&&!f)return;
+ let img=null,file=null;
+ if(f){
+  if(f.size>3e6){alert('3MB 이하 파일만 가능합니다');return}
+  const data=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(f)});
+  if(f.type.startsWith('image/'))img=data;else file={name:f.name,data};
+ }
+ await act('/api/post',{text,img,file},['pt']);
+}
+function delPost(id){act('/api/post/delete',{id})}
+
+/* 공통 채팅 상자 */
+function chatBox(msgs,fn,ph){
+ return `<div class="chat" id="cb">${msgs.map(x=>{const a=U(x.uid);return `<div class="msg ${x.uid===S.me.id?'me':''}"><div class="meta">${esc(a.name)} · ${esc(x.t)}</div>${esc(x.text)}</div>`}).join('')||'<div class="meta">대화를 시작하세요.</div>'}</div>
+ <div class="emo">${EMO.map(e=>`<button onclick="document.getElementById('ci').value+='${e}'">${e}</button>`).join('')}</div>
+ <div class="row"><input id="ci" placeholder="${esc(ph)}" onkeydown="if(event.key==='Enter')${fn}"><button onclick="${fn}">전송</button></div>`;
+}
+const sc=()=>{const c=$('#cb');if(c)c.scrollTop=c.scrollHeight};
+
+/* 3. 반톡 */
+function classView(){
+ const m=S.me;
+ $('#main').innerHTML=`<div class="card"><h2>${m.grade&&m.cls?esc(m.grade)+'학년 '+esc(m.cls)+'반':'반'} 톡</h2><div class="note">학부모 계정은 존재하지 않으며 열람할 수 없습니다.</div>${m.grade&&m.cls?chatBox(S.cm,'sendClass()','반 친구들에게 메시지'):'<div class="meta">학년/반 정보가 없어서 반톡을 사용할 수 없어요.</div>'}</div>`;sc();
+}
+function sendClass(){const v=$('#ci').value.trim();if(!v)return;act('/api/class/send',{text:v},['ci'])}
+
+/* 4. 1:1 채팅 */
+function dmView(){
+ const m=S.me,peers=schoolUsers().filter(u=>isT()?u.role==='student':u.role==='teacher');
+ $('#main').innerHTML=`<div class="card"><h2>1:1 채팅</h2><div class="note">${isT()?'교사 ↔ 학생 1:1만 가능합니다.':'학생끼리 1:1 채팅은 금지되어 교사만 표시됩니다.'}</div>
+ <div>${peers.map(u=>`<span class="chip ${S.dm===u.id?'on':''}" onclick="S.dm=${u.id};render()">${esc(u.name)}</span>`).join('')}</div>
+ ${S.dm?`<hr style="border:0;border-top:1px solid var(--bd)">${chatBox(S.dms[dmKey(m.id,S.dm)]||[],'sendDm()',U(S.dm).name+'님에게')}`:'<div class="meta" style="margin-top:8px">대화 상대를 선택하세요.</div>'}</div>`;sc();
+}
+function sendDm(){const v=$('#ci').value.trim();if(!v)return;act('/api/dm/send',{to:S.dm,text:v},['ci'])}
+
+/* 5. 조별과제 */
+function groupView(){
+ const m=S.me,gs=S.groups,g=gs.find(x=>x.id===S.grp);
+ const studs=schoolUsers().filter(u=>u.role==='student');
+ $('#main').innerHTML=`<div class="card"><h2>조별과제</h2><div class="note">${isT()?'교사 관리 계정이 방을 만들고 모든 대화를 열람합니다.':'교사가 만든 조별방에서만 학생끼리 대화할 수 있습니다.'}</div>
+ ${isT()?`<input id="gn" placeholder="조 이름"><div>${studs.map(u=>`<span class="chip ${S.sel.includes(u.id)?'on':''}" onclick="tg(${u.id})">${esc(u.name)}</span>`).join('')}</div><button style="margin:8px 0" onclick="mk()">조별방 만들기</button><hr style="border:0;border-top:1px solid var(--bd)">`:''}
+ <div>${gs.map(x=>`<span class="chip ${S.grp===x.id?'on':''}" onclick="S.grp=${x.id};render()">${esc(x.name)}</span>`).join('')||'<span class="meta">참여 중인 조가 없습니다.</span>'}</div>
+ ${g?`<div class="meta" style="margin:6px 0">참여: ${g.members.map(i=>esc(U(i).name)).join(', ')} + 교사 ${esc(U(g.tid).name)}</div>${chatBox(g.msgs,'sendGrp()','조원에게 메시지')}`:''}</div>`;sc();
+}
+function tg(id){S.sel=S.sel.includes(id)?S.sel.filter(x=>x!==id):[...S.sel,id];renderKeep()}
+async function mk(){
+ const n=$('#gn').value.trim();if(!n||!S.sel.length)return;
+ if(await act('/api/group/create',{name:n,members:S.sel},['gn']))S.sel=[],renderKeep();
+}
+function sendGrp(){const v=$('#ci').value.trim();if(!v)return;act('/api/group/send',{gid:S.grp,text:v},['ci'])}
+
+/* 6. 학생자치 논제 */
+function topicView(){
+ const m=S.me,ts=S.topics;
+ $('#main').innerHTML=`<div class="card"><h2>학생자치회 논제</h2><div class="note">회장단이 주간·월간 논제를 정리하면 학생들이 의견을 냅니다.</div>
+ ${m.council?`<div class="row"><select id="tp" style="width:90px"><option>주간</option><option>월간</option></select><input id="tt" placeholder="논제 입력"><button onclick="addTopic()">등록</button></div>`:'<div class="meta">논제 등록은 회장단만 가능합니다.</div>'}</div>
+ ${ts.map(t=>`<div class="card"><div class="top"><div><span class="badge" style="margin:0">${esc(t.period)}</span> <b>${esc(t.text)}</b></div>${m.council||isT()?`<button class="d" onclick="delTopic(${t.id})">삭제</button>`:''}</div>
+ <div class="meta">등록: ${esc(U(t.uid).name)}</div><div class="row" style="margin-top:6px"><button class="g" onclick="vote(${t.id},'yes')">👍 찬성 ${t.yes.length}</button><button class="g" onclick="vote(${t.id},'no')">👎 반대 ${t.no.length}</button></div></div>`).join('')}`;
+}
+function addTopic(){const v=$('#tt').value.trim();if(!v)return;act('/api/topic',{period:$('#tp').value,text:v},['tt'])}
+function delTopic(id){act('/api/topic/delete',{id})}
+function vote(id,kind){act('/api/topic/vote',{id,kind})}
+
+/* ---------- 시작 ---------- */
+(async()=>{
+ await loadDemo();
+ if(TOKEN)await sync(true);
+ if(!S.me)render();
+ setInterval(()=>{if(S.me)sync()},3000);  // 3초마다 새 데이터 확인
+})();
+</script>
+</body>
+</html>
